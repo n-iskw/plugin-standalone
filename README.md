@@ -1,4 +1,4 @@
-# Simple Plugin Host
+# Plugin Standalone
 
 VST3 / AudioUnit プラグインを DAW なしで使うための軽量ホストアプリケーション。
 
@@ -24,12 +24,12 @@ cmake --build build --config Release
 macOS の場合、ビルド成果物は以下に生成されます:
 
 ```
-build/SimplePluginHost_artefacts/Release/Simple Plugin Host.app
+build/PluginStandalone_artefacts/Release/Plugin Standalone.app
 ```
 
 ## ダウンロード
 
-[Releases](https://github.com/noshut/simple-plugin-host/releases) ページからビルド済みバイナリをダウンロードできます。
+[Releases](https://github.com/noshut/plugin-standalone/releases) ページからビルド済みバイナリをダウンロードできます。
 
 ### macOS での初回起動
 

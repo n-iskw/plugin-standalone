@@ -5,7 +5,7 @@
 static juce::File getSettingsFile()
 {
     return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-        .getChildFile("SimplePluginHost")
+        .getChildFile("PluginStandalone")
         .getChildFile("settings.xml");
 }
 
@@ -346,7 +346,7 @@ class MainWindow : public juce::DocumentWindow
 {
 public:
     MainWindow()
-        : DocumentWindow("Simple Plugin Host",
+        : DocumentWindow("Plugin Standalone",
                           juce::Colours::darkgrey,
                           DocumentWindow::allButtons)
     {
@@ -366,7 +366,7 @@ public:
 class Application : public juce::JUCEApplication
 {
 public:
-    const juce::String getApplicationName() override { return "Simple Plugin Host"; }
+    const juce::String getApplicationName() override { return "Plugin Standalone"; }
     const juce::String getApplicationVersion() override { return "0.1.0"; }
 
     void initialise(const juce::String&) override

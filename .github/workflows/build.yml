@@ -12,10 +12,10 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            artifact: SimplePluginHost-mac
+            artifact: PluginStandalone-mac
             ext: dmg
           - os: windows-latest
-            artifact: SimplePluginHost-win
+            artifact: PluginStandalone-win
             ext: zip
     runs-on: ${{ matrix.os }}
 
@@ -31,9 +31,9 @@ jobs:
       - name: Package (macOS)
         if: runner.os == 'macOS'
         run: |
-          cd build/SimplePluginHost_artefacts/Release
-          hdiutil create -volname "Simple Plugin Host" \
-            -srcfolder "Simple Plugin Host.app" \
+          cd build/PluginStandalone_artefacts/Release
+          hdiutil create -volname "Plugin Standalone" \
+            -srcfolder "Plugin Standalone.app" \
             -ov -format UDZO \
             "${{ github.workspace }}/${{ matrix.artifact }}.dmg"
 
@@ -41,7 +41,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Compress-Archive -Path "build\SimplePluginHost_artefacts\Release\*" `
+          Compress-Archive -Path "build\PluginStandalone_artefacts\Release\*" `
             -DestinationPath "${{ matrix.artifact }}.zip"
 
       - name: Upload artifact
@@ -64,6 +64,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            SimplePluginHost-mac/SimplePluginHost-mac.dmg
-            SimplePluginHost-win/SimplePluginHost-win.zip
+            PluginStandalone-mac/PluginStandalone-mac.dmg
+            PluginStandalone-win/PluginStandalone-win.zip
           generate_release_notes: true
