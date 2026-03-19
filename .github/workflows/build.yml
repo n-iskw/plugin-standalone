@@ -1,0 +1,69 @@
+name: Build and Release
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            artifact: SimplePluginHost-mac
+            ext: dmg
+          - os: windows-latest
+            artifact: SimplePluginHost-win
+            ext: zip
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cd build/SimplePluginHost_artefacts/Release
+          hdiutil create -volname "Simple Plugin Host" \
+            -srcfolder "Simple Plugin Host.app" \
+            -ov -format UDZO \
+            "${{ github.workspace }}/${{ matrix.artifact }}.dmg"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "build\SimplePluginHost_artefacts\Release\*" `
+            -DestinationPath "${{ matrix.artifact }}.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}.${{ matrix.ext }}
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            SimplePluginHost-mac/SimplePluginHost-mac.dmg
+            SimplePluginHost-win/SimplePluginHost-win.zip
+          generate_release_notes: true
