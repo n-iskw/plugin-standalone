@@ -33,7 +33,13 @@ build/PluginStandalone_artefacts/Release/Plugin Standalone.app
 
 ### macOS での初回起動
 
-署名されていないため、初回起動時に警告が表示されます。右クリック →「開く」→「開く」で起動できます。
+署名されていないため、初回起動時に警告が表示されます。ターミナルで以下を実行してください:
+
+```bash
+xattr -cr "/Applications/Plugin Standalone.app"
+```
+
+または「システム設定」→「プライバシーとセキュリティ」→「このまま開く」でも起動できます。
 
 ### Windows での初回起動
 
