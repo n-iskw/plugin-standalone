@@ -16,11 +16,7 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            artifact_path: "build/PluginStandalone_artefacts/Release/Plugin Standalone.app"
-            artifact_name: PluginStandalone-macOS
           - os: windows-latest
-            artifact_path: "build/PluginStandalone_artefacts/Release/Plugin Standalone.exe"
-            artifact_name: PluginStandalone-Windows
 
     runs-on: ${{ matrix.os }}
 
@@ -37,9 +33,13 @@ jobs:
         if: runner.os == 'macOS'
         run: codesign --force --deep --sign - "build/PluginStandalone_artefacts/Release/Plugin Standalone.app"
 
-      - name: Zip (macOS)
+      - name: DMG (macOS)
         if: runner.os == 'macOS'
-        run: zip -r PluginStandalone-macOS.zip "build/PluginStandalone_artefacts/Release/Plugin Standalone.app"
+        run: |
+          mkdir dmg_tmp
+          cp -r "build/PluginStandalone_artefacts/Release/Plugin Standalone.app" dmg_tmp/
+          ln -s /Applications dmg_tmp/Applications
+          hdiutil create -volname "Plugin Standalone" -srcfolder dmg_tmp -ov -format UDZO PluginStandalone-macOS.dmg
 
       - name: Zip (Windows)
         if: runner.os == 'Windows'
@@ -49,4 +49,6 @@ jobs:
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.artifact_name }}.zip
+          files: |
+            PluginStandalone-macOS.dmg
+            PluginStandalone-Windows.zip
