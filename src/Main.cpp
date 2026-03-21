@@ -179,19 +179,28 @@ private:
         opts.launchAsync();
     }
 
-    void showPluginList()
+    void scanPlugins()
     {
-        // Scan default plugin directories + system directories
         for (auto* format : formatManager.getFormats())
         {
             auto paths = format->getDefaultLocationsToSearch();
+#if JUCE_MAC
             paths.addIfNotAlreadyThere(juce::File("/Library/Audio/Plug-Ins/VST3"));
             paths.addIfNotAlreadyThere(juce::File("/Library/Audio/Plug-Ins/Components"));
-            juce::PluginDirectoryScanner scanner(
-                knownPlugins, *format, paths, true, juce::File());
+#elif JUCE_WINDOWS
+            paths.addIfNotAlreadyThere(juce::File("C:\\Program Files\\Common Files\\VST3"));
+            paths.addIfNotAlreadyThere(juce::File("C:\\Program Files\\VSTPlugins"));
+            paths.addIfNotAlreadyThere(juce::File("C:\\Program Files\\Steinberg\\VSTPlugins"));
+#endif
+            juce::PluginDirectoryScanner scanner(knownPlugins, *format, paths, true, juce::File());
             juce::String name;
             while (scanner.scanNextFile(true, name)) {}
         }
+    }
+
+    void showPluginList()
+    {
+        scanPlugins();
 
         // Build menu manually, preferring AU over VST3 when both exist
         juce::PopupMenu menu;
@@ -243,6 +252,10 @@ private:
 
         if (!instance)
         {
+            juce::AlertWindow::showMessageBoxAsync(
+                juce::MessageBoxIconType::WarningIcon,
+                "Plugin Load Error",
+                "Failed to load plugin:\n" + error);
             statusLabel.setText("Error: " + error, juce::dontSendNotification);
             return;
         }
@@ -268,9 +281,6 @@ private:
         if (proc->hasEditor())
         {
             auto* editor = proc->createEditor();
-            // Write editor size to temp file for debugging
-            juce::File("/tmp/plugin-editor-size.txt").replaceWithText(
-                "width=" + juce::String(editor->getWidth()) + " height=" + juce::String(editor->getHeight()));
             pluginWindow = std::make_unique<PluginWindow>(
                 editor,
                 [this] { closePluginWindow(); });
@@ -316,17 +326,7 @@ private:
         auto id = xml->getStringAttribute("lastPlugin");
         if (id.isEmpty()) return;
 
-        // Scan and find the plugin
-        for (auto* format : formatManager.getFormats())
-        {
-            auto paths = format->getDefaultLocationsToSearch();
-            paths.addIfNotAlreadyThere(juce::File("/Library/Audio/Plug-Ins/VST3"));
-            paths.addIfNotAlreadyThere(juce::File("/Library/Audio/Plug-Ins/Components"));
-            juce::PluginDirectoryScanner scanner(
-                knownPlugins, *format, paths, true, juce::File());
-            juce::String name;
-            while (scanner.scanNextFile(true, name)) {}
-        }
+        scanPlugins();
 
         for (auto& desc : knownPlugins.getTypes())
         {
