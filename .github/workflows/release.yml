@@ -33,6 +33,10 @@ jobs:
       - name: Build
         run: cmake --build build --config Release
 
+      - name: Sign (macOS)
+        if: runner.os == 'macOS'
+        run: codesign --force --deep --sign - "build/PluginStandalone_artefacts/Release/Plugin Standalone.app"
+
       - name: Zip (macOS)
         if: runner.os == 'macOS'
         run: zip -r PluginStandalone-macOS.zip "build/PluginStandalone_artefacts/Release/Plugin Standalone.app"
