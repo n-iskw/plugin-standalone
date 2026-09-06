@@ -12,6 +12,19 @@ VST3 / AudioUnit プラグインを DAW なしで使うための軽量ホスト�
 - macOS では AU を優先（VST3 との重複を排除）
 - OS 内蔵プラグインを非表示にし、サードパーティプラグインのみ表示
 
+## AG03MK2 + Paradise Guitar Studio
+
+`Audio Settings...` で入力・出力ともに `Yamaha AG03MK2` を選択します。
+入力Rを使用する場合、Active input channels は **Channel 2 のみ**を有効にし、
+Active output channels は **Channel 1 と Channel 2** を有効にします。
+選択したモノラル入力はプラグインの左右入力に送られ、出力はステレオを維持します。
+AG03MK2 側は MIX MINUS ON を前提とします。
+
+`Load Plugin...` から `UADx Paradise Guitar Studio (AudioUnit)` を選択してください。
+44.1 kHz / 128 samples を開始点にし、音切れがある場合はバッファを増やします。
+通常終了すると、プラグイン状態・入出力機器・有効チャンネル・サンプルレート・
+バッファサイズを保存し、次回起動時に復元します。
+
 ## ビルド
 
 CMake 3.22 以上と C++17 対応コンパイラが必要です。JUCE は CMake の FetchContent で自動取得されます。

@@ -62,7 +62,18 @@ private:
 class HostAudioProcessor : public juce::AudioProcessor
 {
 public:
-    HostAudioProcessor() = default;
+    HostAudioProcessor()
+        : AudioProcessor(BusesProperties()
+            .withInput("Input", juce::AudioChannelSet::stereo(), true)
+            .withOutput("Output", juce::AudioChannelSet::stereo(), true)) {}
+
+    bool isBusesLayoutSupported(const BusesLayout& layout) const override
+    {
+        // AudioProcessorPlayer duplicates a single selected hardware input
+        // into both processor inputs, preserving stereo plugin output.
+        return layout.getMainInputChannelSet() == juce::AudioChannelSet::stereo()
+            && layout.getMainOutputChannelSet() == juce::AudioChannelSet::stereo();
+    }
 
     const juce::String getName() const override { return "Host"; }
     void prepareToPlay(double sr, int bs) override
@@ -128,6 +139,8 @@ public:
     ~MainComponent() override
     {
         saveState();
+        deviceManager.removeAudioCallback(&player);
+        player.setProcessor(nullptr);
         closePluginWindow();
         deviceManager.closeAudioDevice();
     }
@@ -157,7 +170,7 @@ private:
     void setupAudio()
     {
         auto savedSettings = std::unique_ptr<juce::XmlElement>(loadSettings());
-        auto* audioState = savedSettings ? savedSettings->getChildByName("AUDIO_DEVICE") : nullptr;
+        auto* audioState = savedSettings ? savedSettings->getChildByName("DEVICESETUP") : nullptr;
 
         deviceManager.initialise(2, 2, audioState, true);
         player.setProcessor(&hostProcessor);
@@ -167,7 +180,7 @@ private:
     void showAudioSettings()
     {
         auto selector = std::make_unique<juce::AudioDeviceSelectorComponent>(
-            deviceManager, 1, 2, 1, 2, false, false, true, false);
+            deviceManager, 1, 2, 1, 2, false, false, false, false);
         selector->setSize(500, 300);
 
         juce::DialogWindow::LaunchOptions opts;
@@ -240,6 +253,7 @@ private:
 
     void loadPlugin(const juce::PluginDescription& desc)
     {
+        const juce::ScopedLock audioLock(hostProcessor.getCallbackLock());
         closePluginWindow();
         hostProcessor.loaded.reset();
 
