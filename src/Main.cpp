@@ -23,36 +23,125 @@ static void saveSettings(const juce::XmlElement& xml)
 }
 
 //==============================================================================
-class PluginEditorWrapper : public juce::Component
+class PluginEditorWrapper : public juce::Component,
+                            private juce::ComponentListener,
+                            private juce::Timer
 {
 public:
-    PluginEditorWrapper(juce::AudioProcessorEditor* ed) : editor(ed)
+    explicit PluginEditorWrapper(std::unique_ptr<juce::AudioProcessorEditor> ed)
+        : editor(std::move(ed))
     {
-        addAndMakeVisible(editor);
-        setSize(editor->getWidth(), editor->getHeight());
+        jassert(editor != nullptr);
+
+        if (editor != nullptr)
+        {
+            editorWidth = juce::jmax(1, editor->getWidth());
+            editorHeight = juce::jmax(1, editor->getHeight());
+            editor->addComponentListener(this);
+            editorCanResize = editor->isResizable();
+            addAndMakeVisible(editor.get());
+            setSize(editorWidth, editorHeight);
+        }
     }
+
+    ~PluginEditorWrapper() override
+    {
+        stopTimer();
+
+        // AudioProcessorEditor is not owned by Component::addAndMakeVisible.
+        // Destroy it explicitly before the plugin processor is unloaded.
+        if (editor != nullptr)
+        {
+            editor->removeComponentListener(this);
+            removeChildComponent(editor.get());
+            editor.reset();
+        }
+    }
+
     void paint(juce::Graphics& g) override { g.fillAll(juce::Colours::black); }
-    void resized() override { editor->setBounds(getLocalBounds()); }
+    void resized() override
+    {
+        if (editor != nullptr)
+            if (editorCanResize)
+            {
+                juce::ScopedValueSetter<bool> guard(resizingWrapper, true);
+                editor->setBounds(getLocalBounds());
+            }
+    }
+
 private:
-    juce::AudioProcessorEditor* editor;
+    void componentMovedOrResized(juce::Component& component,
+                                 bool,
+                                 bool wasResized) override
+    {
+        if (! wasResized || &component != editor.get() || resizingWrapper)
+            return;
+
+        const auto newWidth = juce::jmax(1, editor->getWidth());
+        const auto newHeight = juce::jmax(1, editor->getHeight());
+
+        if (newWidth == editorWidth && newHeight == editorHeight)
+            return;
+
+        editorWidth = newWidth;
+        editorHeight = newHeight;
+
+        // Plugins such as ScalerAudio can change their editor size when the
+        // user changes an internal UI scale. Resize the wrapper so the
+        // ResizableWindow's content-size tracking resizes the host window too.
+        // Defer this work until the current plugin UI callback has returned so
+        // a window resize cannot delay the click or MIDI event being handled.
+        startTimer(1);
+    }
+
+    void timerCallback() override
+    {
+        stopTimer();
+
+        if (getWidth() == editorWidth && getHeight() == editorHeight)
+            return;
+
+        juce::ScopedValueSetter<bool> guard(resizingWrapper, true);
+        setSize(editorWidth, editorHeight);
+    }
+
+    std::unique_ptr<juce::AudioProcessorEditor> editor;
+    int editorWidth = 1;
+    int editorHeight = 1;
+    bool editorCanResize = false;
+    bool resizingWrapper = false;
 };
 
 //==============================================================================
 class PluginWindow : public juce::DocumentWindow
 {
 public:
-    PluginWindow(juce::AudioProcessorEditor* editor, std::function<void()> onClose)
+    PluginWindow(std::unique_ptr<juce::AudioProcessorEditor> editor,
+                 std::function<void()> onClose)
         : DocumentWindow("Plugin", juce::Colours::black, DocumentWindow::allButtons),
           closeCallback(std::move(onClose))
     {
+        const auto initialWidth = juce::jmax(1, editor != nullptr ? editor->getWidth() : 640);
+        const auto initialHeight = juce::jmax(1, editor != nullptr ? editor->getHeight() : 480);
+        const auto editorCanResize = editor != nullptr && editor->isResizable();
+
         setBackgroundColour(juce::Colours::black);
         setUsingNativeTitleBar(true);
-        setContentOwned(new PluginEditorWrapper(editor), true);
-        centreWithSize(getWidth(), getHeight());
+        setResizable(editorCanResize, editorCanResize);
+        if (editorCanResize)
+            setResizeLimits(initialWidth, initialHeight, initialWidth * 2, initialHeight * 2);
+        setContentOwned(new PluginEditorWrapper(std::move(editor)), true);
+        centreWithSize(initialWidth, initialHeight);
         setVisible(true);
     }
 
-    void closeButtonPressed() override { closeCallback(); }
+    void closeButtonPressed() override
+    {
+        // Do not destroy this DocumentWindow from inside its own callback.
+        // Defer the owner reset until the current event has returned.
+        if (closeCallback != nullptr)
+            juce::MessageManager::callAsync(closeCallback);
+    }
 
 private:
     std::function<void()> closeCallback;
@@ -138,10 +227,17 @@ public:
 
     ~MainComponent() override
     {
-        saveState();
         deviceManager.removeAudioCallback(&player);
         player.setProcessor(nullptr);
         closePluginWindow();
+
+        // AudioProcessorPlayer::setProcessor(nullptr) has stopped the host
+        // processor and released the loaded plugin's audio resources. State
+        // can now be queried without an audio callback racing this thread.
+        saveState();
+
+        const juce::ScopedLock audioLock(hostProcessor.getCallbackLock());
+        hostProcessor.loaded.reset();
         deviceManager.closeAudioDevice();
     }
 
@@ -253,9 +349,15 @@ private:
 
     void loadPlugin(const juce::PluginDescription& desc)
     {
-        const juce::ScopedLock audioLock(hostProcessor.getCallbackLock());
+        // Stop the host processor before replacing the plugin. This also
+        // calls HostAudioProcessor::releaseResources() for the old instance.
+        player.setProcessor(nullptr);
         closePluginWindow();
-        hostProcessor.loaded.reset();
+
+        {
+            const juce::ScopedLock audioLock(hostProcessor.getCallbackLock());
+            hostProcessor.loaded.reset();
+        }
 
         juce::String error;
         auto setup = deviceManager.getAudioDeviceSetup();
@@ -266,6 +368,7 @@ private:
 
         if (!instance)
         {
+            player.setProcessor(&hostProcessor);
             juce::AlertWindow::showMessageBoxAsync(
                 juce::MessageBoxIconType::WarningIcon,
                 "Plugin Load Error",
@@ -289,14 +392,17 @@ private:
         lastPluginId = desc.createIdentifierString();
         hostProcessor.loaded = std::move(instance);
 
+        // AudioProcessorPlayer prepares the host and the newly loaded plugin
+        // using the active device's current sample rate and block size.
+        player.setProcessor(&hostProcessor);
+
         auto* proc = hostProcessor.loaded.get();
-        proc->prepareToPlay(sr, bs);
 
         if (proc->hasEditor())
         {
-            auto* editor = proc->createEditor();
+            std::unique_ptr<juce::AudioProcessorEditor> editor(proc->createEditor());
             pluginWindow = std::make_unique<PluginWindow>(
-                editor,
+                std::move(editor),
                 [this] { closePluginWindow(); });
         }
 
